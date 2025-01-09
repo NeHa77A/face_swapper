@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { width: 300px; padding: 15px; }
+        .container { display: flex; flex-direction: column; gap: 15px; }
+        button { padding: 10px; cursor: pointer; }
+        .status { color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div>
+            <label for="sourceImage">Choose Source Face:</label>
+            <input type="file" id="sourceImage" accept="image/*">
+        </div>
+        <button id="uploadButton">Upload Source Face</button>
+        <button id="toggleSwap">Start Face Swap</button>
+        <div id="status" class="status"></div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

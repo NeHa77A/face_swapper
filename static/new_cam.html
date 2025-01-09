@@ -1,0 +1,1037 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI Face Swap</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .main-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .source-images {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .source-image {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .source-image.selected {
+            border-color: #0066cc;
+        }
+
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #0066cc;
+            background-color: rgba(0, 102, 204, 0.1);
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0052a3;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        #sourceFileInput {
+            display: none;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .stats-item {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Settings</h2>
+            <div class="upload-area" id="uploadArea">
+                <p>Click or drag to upload source image</p>
+                <input type="file" id="sourceFileInput" accept="image/*" multiple />
+            </div>
+            
+            <h3>Source Faces</h3>
+            <div class="source-images" id="sourceImagesGrid"></div>
+
+            <div class="controls">
+                <button id="startButton">Start Camera</button>
+                <button id="stopButton" disabled>Stop</button>
+            </div>
+
+            <div id="connectionStatus" class="status disconnected">
+                Disconnected
+            </div>
+
+            <div id="statsContainer" class="stats">
+                <h3>Statistics</h3>
+                <div class="stats-item">
+                    <span>Frames Processed:</span>
+                    <span id="framesProcessed">0</span>
+                </div>
+                <div class="stats-item">
+                    <span>Faces Detected:</span>
+                    <span id="facesDetected">0</span>
+                </div>
+                <div class="stats-item">
+                    <span>Processing Time:</span>
+                    <span id="processingTime">0 ms</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <h1>Real-Time Face Swap</h1>
+            <div class="video-container">
+                <video id="videoElement" autoplay playsinline></video>
+                <div id="loading" class="loading">Processing...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let videoStream = null;
+        const video = document.getElementById('videoElement');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const statusElement = document.getElementById('connectionStatus');
+        const uploadArea = document.getElementById('uploadArea');
+        const sourceFileInput = document.getElementById('sourceFileInput');
+        const loading = document.getElementById('loading');
+        const statsElements = {
+            framesProcessed: document.getElementById('framesProcessed'),
+            facesDetected: document.getElementById('facesDetected'),
+            processingTime: document.getElementById('processingTime')
+        };
+
+        // Handle drag and drop events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.classList.remove('dragover');
+            });
+        });
+
+        // Handle file upload
+        uploadArea.addEventListener('drop', handleDrop);
+        uploadArea.addEventListener('click', () => sourceFileInput.click());
+        sourceFileInput.addEventListener('change', async (e) => {
+            await handleFiles(e.target.files);
+        });
+
+        async function handleDrop(e) {
+            const files = e.dataTransfer.files;
+            await handleFiles(files);
+        }
+
+        async function handleFiles(files) {
+            for (const file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    loading.style.display = 'block';
+                    const response = await fetch('/upload-source', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        addSourceImageToGrid(file, result.source_id);
+                        showStatus('Source face added successfully', 'connected');
+                    } else {
+                        showStatus(result.message || 'Failed to upload image', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error uploading file:', error);
+                    showStatus('Error uploading file', 'error');
+                } finally {
+                    loading.style.display = 'none';
+                }
+            }
+        }
+
+        function addSourceImageToGrid(file, sourceId) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.className = 'source-image';
+                img.dataset.id = sourceId;
+                img.addEventListener('click', () => selectSourceImage(img));
+                document.getElementById('sourceImagesGrid').appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function selectSourceImage(img) {
+            document.querySelectorAll('.source-image').forEach(i => i.classList.remove('selected'));
+            img.classList.add('selected');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'source_change',
+                    sourceId: img.dataset.id
+                }));
+            }
+        }
+
+        function showStatus(message, type) {
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+            setTimeout(() => {
+                if (type === 'error') {
+                    statusElement.className = ws && ws.readyState === WebSocket.OPEN ? 
+                        'status connected' : 'status disconnected';
+                    statusElement.textContent = ws && ws.readyState === WebSocket.OPEN ? 
+                        'Connected' : 'Disconnected';
+                }
+            }, 3000);
+        }
+
+        function updateStats(stats) {
+            statsElements.framesProcessed.textContent = stats.total_frames_processed || '0';
+            statsElements.facesDetected.textContent = stats.total_faces_detected || '0';
+            statsElements.processingTime.textContent = 
+                `${(stats.average_processing_time || 0).toFixed(2)} ms`;
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                showStatus('Connected', 'connected');
+                const selectedSource = document.querySelector('.source-image.selected');
+                if (selectedSource) {
+                    ws.send(JSON.stringify({
+                        type: 'source_change',
+                        sourceId: selectedSource.dataset.id
+                    }));
+                }
+            };
+
+            ws.onclose = () => {
+                showStatus('Disconnected', 'disconnected');
+                handleWebSocketError();
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                handleWebSocketError();
+            };
+
+            ws.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    try {
+                        const url = URL.createObjectURL(event.data);
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            URL.revokeObjectURL(url);
+                        };
+                        img.src = url;
+                    } catch (error) {
+                        console.error('Error processing received frame:', error);
+                    }
+                } else {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'stats') {
+                            updateStats(data.data);
+                        } else if (data.type === 'error') {
+                            showStatus(data.message, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                    }
+                }
+            };
+        }
+
+        // Camera handling
+        startButton.addEventListener('click', async () => {
+            try {
+                loading.style.display = 'block';
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                video.srcObject = videoStream;
+                connectWebSocket();
+                startButton.disabled = true;
+                stopButton.disabled = false;
+
+                // Start sending frames
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+
+                function sendFrame() {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        canvas.toBlob(blob => {
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(blob);
+                            }
+                        }, 'image/jpeg', 0.85);
+                    }
+                    
+                    if (videoStream) {
+                        requestAnimationFrame(sendFrame);
+                    }
+                }
+
+                video.onloadedmetadata = () => {
+                    loading.style.display = 'none';
+                    sendFrame();
+                };
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                showStatus('Error accessing camera', 'error');
+                stopButton.click();
+            }
+        });
+
+        stopButton.addEventListener('click', () => {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            video.srcObject = null;
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            loading.style.display = 'none';
+            showStatus('Disconnected', 'disconnected');
+        });
+
+        // WebSocket error handling and reconnection
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function handleWebSocketError() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                showStatus(`Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`, 'disconnected');
+                setTimeout(connectWebSocket, 2000 * reconnectAttempts);
+            } else {
+                showStatus('Connection failed. Please refresh the page.', 'error');
+                stopButton.click();
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (videoStream) {
+                const videoTrack = videoStream.getVideoTracks()[0];
+                const capabilities = videoTrack.getCapabilities();
+                if (capabilities.width && capabilities.height) {
+                    const constraints = {
+                        width: { ideal: Math.min(1280, window.innerWidth) },
+                        height: { ideal: Math.min(720, window.innerHeight) }
+                    };
+                    videoTrack.applyConstraints(constraints);
+                }
+            }
+        });
+    </script>
+</body>
+
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Face Swap</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #000;
+        }
+        #videoElement, #outputCanvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #outputCanvas {
+            z-index: 1;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .upload-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .error {
+            background-color: #ffe6e6;
+            color: #d63031;
+        }
+        .success {
+            background-color: #e6ffe6;
+            color: #27ae60;
+        }
+        #debug {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Live Face Swap</h1>
+        
+        <div class="upload-container">
+            <h3>Upload Source Face</h3>
+            <input type="file" id="sourceImage" accept="image/*">
+            <button onclick="uploadSource()" id="uploadBtn">Upload</button>
+            <div id="uploadStatus" class="status"></div>
+        </div>
+
+        <div class="video-container">
+            <video id="videoElement" autoplay playsinline></video>
+            <canvas id="outputCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <button onclick="startVideo()" id="startBtn">Start Camera</button>
+            <button onclick="stopVideo()" id="stopBtn">Stop Camera</button>
+        </div>
+    </div>
+    <div id="debug"></div>
+
+    <script>
+
+        let ws;
+        let videoElement = document.getElementById('videoElement');
+        let outputCanvas = document.getElementById('outputCanvas');
+        let outputCtx = outputCanvas.getContext('2d');
+        let mediaStream = null;
+        let currentFaceId = null;
+        let isProcessing = false;
+        let isStreaming = false;
+        
+
+        function debug(message) {
+            const debug = document.getElementById('debug');
+            debug.textContent = message;
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        async function startVideo() {
+            try {
+                const startBtn = document.getElementById('startBtn');
+                startBtn.disabled = true;
+                
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+                
+                videoElement.srcObject = mediaStream;
+                await videoElement.play();
+                
+                outputCanvas.width = videoElement.videoWidth;
+                outputCanvas.height = videoElement.videoHeight;
+                
+                isStreaming = true;
+                initializeWebSocket();
+                startBtn.disabled = false;
+                
+                debug('Camera started');
+            } catch (err) {
+                console.error("Error:", err);
+                showStatus("Error accessing camera", "error");
+                document.getElementById('startBtn').disabled = false;
+                debug('Camera error: ' + err.message);
+            }
+        }
+
+        function stopVideo() {
+            isStreaming = false;
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+            }
+            if (ws) {
+                ws.close();
+            }
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            debug('Camera stopped');
+        }
+
+        function initializeWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            
+            ws.onopen = () => {
+                debug('WebSocket connected');
+                processFrame();
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    debug('Error: ' + data.error);
+                    isProcessing = false;
+                    return;
+                }
+                
+                if (data.frame) {
+                    const img = new Image();
+                    img.onload = () => {
+                        outputCtx.drawImage(img, 0, 0, outputCanvas.width, outputCanvas.height);
+                        isProcessing = false;
+                        if (isStreaming) {
+                            processFrame();
+                        }
+                    };
+                    img.src = data.frame;
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                debug('WebSocket error');
+                isProcessing = false;
+            };
+
+            ws.onclose = () => {
+                debug('WebSocket closed');
+                if (isStreaming) {
+                    setTimeout(initializeWebSocket, 2000);
+                }
+            };
+        }
+
+        function processFrame() {
+            if (!isStreaming || !ws || ws.readyState !== WebSocket.OPEN || !currentFaceId || isProcessing) {
+                debug('Skipping frame: ' + 
+                      (!isStreaming ? 'not streaming' : 
+                       !ws ? 'no websocket' : 
+                       ws.readyState !== WebSocket.OPEN ? 'websocket not open' : 
+                       !currentFaceId ? 'no face ID' : 
+                       'processing'));
+                return;
+            }
+
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = videoElement.videoWidth;
+            tempCanvas.height = videoElement.videoHeight;
+            tempCtx.drawImage(videoElement, 0, 0);
+            
+            isProcessing = true;
+            try {
+                ws.send(JSON.stringify({
+                    frame: tempCanvas.toDataURL('image/jpeg', 0.3),
+                    face_id: currentFaceId
+                }));
+                debug('Frame sent');
+            } catch (error) {
+                console.error("Error sending frame:", error);
+                debug('Error sending frame: ' + error.message);
+                isProcessing = false;
+            }
+        }
+
+        async function uploadSource() {
+            const fileInput = document.getElementById('sourceImage');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            if (!fileInput.files.length) {
+                showStatus("Please select a file first", "error");
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            debug('Uploading source image...');
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload_source', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentFaceId = data.face_id;
+                    showStatus("Source face uploaded successfully!", "success");
+                    debug('Source face uploaded, ID: ' + currentFaceId);
+                } else {
+                    showStatus(data.error || "Upload failed", "error");
+                    debug('Upload failed: ' + (data.error || "unknown error"));
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                showStatus("Error uploading source image", "error");
+                debug('Upload error: ' + error.message);
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Face Swap</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #videoElement, #outputCanvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #outputCanvas {
+            z-index: 1;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #ffe6e6;
+            color: #d63031;
+        }
+        .success {
+            background-color: #e6ffe6;
+            color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Live Face Swap</h1>
+        
+        <div class="upload-container">
+            <h3>Upload Source Face</h3>
+            <input type="file" id="sourceImage" accept="image/*">
+            <button onclick="uploadSource()">Upload</button>
+            <div id="uploadStatus" class="status"></div>
+        </div>
+
+        <div class="video-container">
+            <video id="videoElement" autoplay playsinline></video>
+            <canvas id="outputCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <button onclick="startVideo()">Start Camera</button>
+            <button onclick="stopVideo()">Stop Camera</button>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let videoElement = document.getElementById('videoElement');
+        let outputCanvas = document.getElementById('outputCanvas');
+        let outputCtx = outputCanvas.getContext('2d');
+        let mediaStream = null;
+        let currentFaceId = null;
+        let isProcessing = false;
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        async function startVideo() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+                videoElement.srcObject = mediaStream;
+                await videoElement.play();
+                
+                outputCanvas.width = videoElement.videoWidth;
+                outputCanvas.height = videoElement.videoHeight;
+                
+                initializeWebSocket();
+            } catch (err) {
+                console.error("Error:", err);
+                showStatus("Error accessing camera", "error");
+            }
+        }
+
+        function stopVideo() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+            }
+            if (ws) {
+                ws.close();
+            }
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+        }
+
+        function initializeWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            
+            ws.onopen = () => {
+                console.log("WebSocket connected");
+                processFrame();
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    showStatus(data.error, "error");
+                    isProcessing = false;
+                    return;
+                }
+                
+                if (data.frame) {
+                    const img = new Image();
+                    img.onload = () => {
+                        outputCtx.drawImage(img, 0, 0, outputCanvas.width, outputCanvas.height);
+                        isProcessing = false;
+                        processFrame();
+                    };
+                    img.src = data.frame;
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                isProcessing = false;
+            };
+        }
+
+        function processFrame() {
+            if (!ws || ws.readyState !== WebSocket.OPEN || !currentFaceId || isProcessing) {
+                setTimeout(processFrame, 100);
+                return;
+            }
+
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = videoElement.videoWidth;
+            tempCanvas.height = videoElement.videoHeight;
+            tempCtx.drawImage(videoElement, 0, 0);
+            
+            isProcessing = true;
+            try {
+                ws.send(JSON.stringify({
+                    frame: tempCanvas.toDataURL('image/jpeg'),
+                    face_id: currentFaceId
+                }));
+            } catch (error) {
+                console.error("Error sending frame:", error);
+                isProcessing = false;
+                setTimeout(processFrame, 100);
+            }
+        }
+
+        async function uploadSource() {
+            const fileInput = document.getElementById('sourceImage');
+            if (!fileInput.files.length) {
+                showStatus("Please select a file first", "error");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload_source', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentFaceId = data.face_id;
+                    showStatus("Source face uploaded successfully!", "success");
+                } else {
+                    showStatus(data.error || "Upload failed", "error");
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                showStatus("Error uploading source image", "error");
+            }
+        }
+    </script>
+</body>
+</html> -->

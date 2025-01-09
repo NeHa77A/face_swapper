@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Face Swap</title>
+    <!-- Add Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg-color: #f9fafb;
+            --card-bg: #ffffff;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+            --success-color: #10b981;
+            --error-color: #ef4444;
+            --border-radius: 12px;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .upload-container {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        .upload-container h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background-color: #f3f4f6;
+            border: 2px dashed var(--border-color);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .file-input-label:hover {
+            border-color: var(--primary-color);
+            background-color: #f5f5f5;
+        }
+
+        .video-container {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            position: relative;
+        }
+
+        #videoElement, #outputCanvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #outputCanvas {
+            z-index: 1;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        button {
+            flex: 1;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: #f3f4f6;
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background-color: #e5e7eb;
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: var(--border-radius);
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status.success {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+
+        .status.error {
+            background-color: #fee2e2;
+            color: var(--error-color);
+        }
+
+        .status-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .upload-container {
+                max-width: 500px;
+                margin: 0 auto;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Live Face Swap</h1>
+            <p>Upload a source image and start the camera to begin face swapping in real-time</p>
+        </header>
+
+        <main class="main-content">
+            <div class="upload-container">
+                <h3>Upload Source Face</h3>
+                <div class="file-input-wrapper">
+                    <label class="file-input-label" id="fileLabel">
+                        <input type="file" id="sourceImage" accept="image/*" onchange="updateFileLabel()">
+                        <span id="fileLabelText">Choose a file or drag it here</span>
+                    </label>
+                </div>
+                <button onclick="uploadSource()" class="btn-primary">Upload</button>
+                <div id="uploadStatus" class="status"></div>
+            </div>
+
+            <div>
+                <div class="video-container">
+                    <video id="videoElement" autoplay playsinline></video>
+                    <canvas id="outputCanvas"></canvas>
+                </div>
+
+                <div class="controls">
+                    <button onclick="startVideo()" class="btn-primary">Start Camera</button>
+                    <button onclick="stopVideo()" class="btn-secondary">Stop Camera</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let ws;
+        let videoElement = document.getElementById('videoElement');
+        let outputCanvas = document.getElementById('outputCanvas');
+        let outputCtx = outputCanvas.getContext('2d');
+        let mediaStream = null;
+        let currentFaceId = null;
+        let isProcessing = false;
+        let isStreaming = false;
+
+        function updateFileLabel() {
+            const fileInput = document.getElementById('sourceImage');
+            const fileLabelText = document.getElementById('fileLabelText');
+            if (fileInput.files.length > 0) {
+                fileLabelText.textContent = fileInput.files[0].name;
+            } else {
+                fileLabelText.textContent = 'Choose a file or drag it here';
+            }
+        }
+
+        async function startVideo() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                });
+                videoElement.srcObject = mediaStream;
+                videoElement.play();
+                
+                videoElement.onplaying = () => {
+                    isStreaming = true;
+                    outputCanvas.width = videoElement.videoWidth;
+                    outputCanvas.height = videoElement.videoHeight;
+                    connectWebSocket();
+                };
+            } catch (err) {
+                showStatus("Error accessing camera. Please ensure camera permissions are granted.", "error");
+            }
+        }
+
+        function stopVideo() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+                isStreaming = false;
+            }
+            if (ws) {
+                ws.close();
+            }
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.className = `status ${type}`;
+            const icon = type === 'success' ? '✓' : '✕';
+            statusDiv.innerHTML = `<span class="status-icon">${icon}</span>${message}`;
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            
+            ws.onopen = () => {
+                console.log("WebSocket connected");
+                startVideoProcessing();
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    showStatus(data.error, "error");
+                    isProcessing = false;
+                    return;
+                }
+                
+                if (data.frame) {
+                    const img = new Image();
+                    img.onload = () => {
+                        outputCtx.drawImage(img, 0, 0, outputCanvas.width, outputCanvas.height);
+                        isProcessing = false;
+                    };
+                    img.src = data.frame;
+                }
+            };
+            
+            ws.onerror = (error) => {
+                showStatus("WebSocket connection error", "error");
+                isProcessing = false;
+            };
+            
+            ws.onclose = () => {
+                console.log("WebSocket closed");
+                isProcessing = false;
+            };
+        }
+
+        async function startVideoProcessing() {
+            const captureCanvas = document.createElement('canvas');
+            const captureCtx = captureCanvas.getContext('2d');
+            
+            async function processFrame() {
+                if (!isStreaming || !ws || ws.readyState !== WebSocket.OPEN || !currentFaceId || isProcessing) {
+                    requestAnimationFrame(processFrame);
+                    return;
+                }
+
+                captureCanvas.width = videoElement.videoWidth;
+                captureCanvas.height = videoElement.videoHeight;
+                captureCtx.drawImage(videoElement, 0, 0);
+                
+                isProcessing = true;
+                const frame = captureCanvas.toDataURL('image/jpeg', 0.2);
+                
+                try {
+                    ws.send(JSON.stringify({
+                        frame: frame,
+                        face_id: currentFaceId
+                    }));
+                } catch (error) {
+                    showStatus("Error sending frame", "error");
+                    isProcessing = false;
+                }
+                
+                requestAnimationFrame(processFrame);
+            }
+            
+            requestAnimationFrame(processFrame);
+        }
+
+        async function uploadSource() {
+            const fileInput = document.getElementById('sourceImage');
+            
+            if (!fileInput.files.length) {
+                showStatus("Please select a file first", "error");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload_source', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentFaceId = data.face_id;
+                    showStatus("Source face uploaded successfully!", "success");
+                } else {
+                    showStatus(data.error || "Upload failed", "error");
+                }
+            } catch (error) {
+                showStatus("Error uploading source image", "error");
+            }
+        }
+
+        // Add drag and drop support
+        const fileLabel = document.getElementById('fileLabel');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileLabel.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            fileLabel.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            fileLabel.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            fileLabel.classList.add('drag-over');
+        }
+
+        function unhighlight(e) {
+            fileLabel.classList.remove('drag-over');
+        }
+
+        fileLabel.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            document.getElementById('sourceImage').files = files;
+            updateFileLabel();
+        }
+    </script>
+</body>
+</html>
